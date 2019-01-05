@@ -28,7 +28,7 @@ func main() {
 		nodeTable = make([]*node, *args.h) //[*args.m]*node
 		keyTable  []*key
 	)
-	fmt.Println("cap(nodeTable):", unsafe.Sizeof(node{"1", 1, nil}))
+	fmt.Println("cap(nodeTable):", unsafe.Sizeof(node{"1", 1, 1, nil}))
 	//fmt.Println("*args.m:", *args.m)
 	creatBasicTable(nodeTable[:], keyTable)
 	fmt.Println("How many collision:", collision)
@@ -87,12 +87,14 @@ type node struct {
 	//keypos uint
 	key   string
 	count int
+	idf   float32
 	next  *node
 }
 
 type key struct {
 	keypos *string
 	count  *int
+	idf    *float32
 }
 
 func doc2vec(nodeTable []*node, keyTable []*key) {
@@ -160,6 +162,7 @@ func doc2vec(nodeTable []*node, keyTable []*key) {
 
 /* 改版BasicTable，施工中 */
 func creatBasicTable(nodeTable []*node, keyTable []*key) {
+	fmt.Println("Creat basic table ...")
 	hashFile, err := os.Open(os.Args[1])
 	if err != nil {
 		fmt.Println("Open file fail !")
@@ -168,23 +171,35 @@ func creatBasicTable(nodeTable []*node, keyTable []*key) {
 	scanner := bufio.NewReader(hashFile)
 	stringBuf, readStringErr := scanOneWord(scanner)
 
-	// 去除空格
-	stringBuf = strings.Replace(stringBuf, " ", "", -1)
-	// 去除换行符
-	stringBuf = strings.Replace(stringBuf, "\n", "", -1)
+	// // 去除空格
+	// stringBuf = strings.Replace(stringBuf, " ", "", -1)
+	// // 去除换行符
+	// stringBuf = strings.Replace(stringBuf, "\n", "", -1)
 
 	for readStringErr == nil {
-		if uint64(len(stringBuf)) <= (*args.s + 2) {
-			hashNumber := hash(&stringBuf)
-			nodeTable[hashNumber], keyTable = addWord(nodeTable[hashNumber], stringBuf, keyTable)
+		if strings.Contains(stringBuf, "\n") {
+			s := strings.Split(stringBuf, "\n")
+			stringBuf = s[0]
+
+			// 去除空格
+			stringBuf = strings.Replace(stringBuf, " ", "", -1)
+			// 去除换行符
+			stringBuf = strings.Replace(stringBuf, "\n", "", -1)
+
+			if uint64(len(stringBuf)) <= (*args.s + 2) {
+				hashNumber := hash(&stringBuf)
+				nodeTable[hashNumber], keyTable = addWord(nodeTable[hashNumber], stringBuf, keyTable)
+			}
+			stringBuf = s[1]
+		} else {
+			// 去除空格
+			stringBuf = strings.Replace(stringBuf, " ", "", -1)
+			if uint64(len(stringBuf)) <= (*args.s + 2) {
+				hashNumber := hash(&stringBuf)
+				nodeTable[hashNumber], keyTable = addWord(nodeTable[hashNumber], stringBuf, keyTable)
+			}
+			stringBuf, readStringErr = scanOneWord(scanner)
 		}
-		stringBuf, readStringErr = scanOneWord(scanner)
-
-		// 去除空格
-		stringBuf = strings.Replace(stringBuf, " ", "", -1)
-		// 去除换行符
-		stringBuf = strings.Replace(stringBuf, "\n", "", -1)
-
 	}
 }
 
@@ -234,8 +249,8 @@ func addWord(newWord *node, stringBuf string, keyTable []*key) (*node, []*key) {
 	i++
 	fmt.Printf("Add word : %d\r", i)
 	if newWord == nil {
-		newWord = &node{stringBuf, 1, nil}
-		keyTable = append(keyTable, &key{&newWord.key, &newWord.count})
+		newWord = &node{stringBuf, 1, 0, nil}
+		keyTable = append(keyTable, &key{&newWord.key, &newWord.count, &newWord.idf})
 		return newWord, keyTable
 	}
 
@@ -246,8 +261,8 @@ func addWord(newWord *node, stringBuf string, keyTable []*key) (*node, []*key) {
 		}
 		if w.next == nil {
 			collision++
-			newNode := &node{stringBuf, 1, nil}
-			keyTable = append(keyTable, &key{&newNode.key, &newNode.count})
+			newNode := &node{stringBuf, 1, 0, nil}
+			keyTable = append(keyTable, &key{&newNode.key, &newNode.count, &newNode.idf})
 			w.next = newNode
 			return newWord, keyTable
 		}
@@ -297,7 +312,7 @@ func outputVector(nodeTable []*node) {
 		fmt.Println("Open file fail !")
 	}
 	defer vecFile.Close()
-	for n := 0; n < len(nodeTable); n++ {
+	for n := 1; n < len(nodeTable); n++ {
 		for p := nodeTable[n]; p != nil; p = p.next {
 			vecFile.WriteString(fmt.Sprintf("%d ", p.count))
 		}
@@ -328,7 +343,7 @@ func outputNodeTable(nodeTable []*node) {
 		fmt.Println("Open file fail !")
 	}
 	defer nodeTableFile.Close()
-	for n := 0; n < len(nodeTable); n++ {
+	for n := 1; n < len(nodeTable); n++ {
 		for p := nodeTable[n]; p != nil; p = p.next {
 			nodeTableFile.WriteString(fmt.Sprintf("%d%s ", p.count, p.key))
 		}
