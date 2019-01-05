@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"strconv"
@@ -29,7 +30,6 @@ func main() {
 		keyTable  []*key
 	)
 	fmt.Println("cap(nodeTable):", unsafe.Sizeof(node{"1", 1, 1, nil}))
-	//fmt.Println("*args.m:", *args.m)
 	creatBasicTable(nodeTable[:], keyTable)
 	fmt.Println("How many collision:", collision)
 	clearTableCount(nodeTable[:])
@@ -87,14 +87,14 @@ type node struct {
 	//keypos uint
 	key   string
 	count int
-	idf   float32
+	idf   float64
 	next  *node
 }
 
 type key struct {
 	keypos *string
 	count  *int
-	idf    *float32
+	idf    *float64
 }
 
 func doc2vec(nodeTable []*node, keyTable []*key) {
@@ -129,7 +129,6 @@ func doc2vec(nodeTable []*node, keyTable []*key) {
 			clearTableCount(nodeTable[:])
 			//stringBuf, readStringErr = scanOneWord(scanner)
 			stringBuf = s[1]
-			docNumber++
 		} else {
 			// 去除空格
 			stringBuf = strings.Replace(stringBuf, " ", "", -1)
@@ -191,6 +190,9 @@ func creatBasicTable(nodeTable []*node, keyTable []*key) {
 				nodeTable[hashNumber], keyTable = addWord(nodeTable[hashNumber], stringBuf, keyTable)
 			}
 			stringBuf = s[1]
+			idfNumerator(nodeTable[:])
+			clearTableCount(nodeTable[:])
+			docNumber++
 		} else {
 			// 去除空格
 			stringBuf = strings.Replace(stringBuf, " ", "", -1)
@@ -201,6 +203,7 @@ func creatBasicTable(nodeTable []*node, keyTable []*key) {
 			stringBuf, readStringErr = scanOneWord(scanner)
 		}
 	}
+	computeIDF(nodeTable[:])
 }
 
 func clearTableCount(nodeTable []*node) {
@@ -208,6 +211,25 @@ func clearTableCount(nodeTable []*node) {
 		for p := nodeTable[n]; p != nil; p = p.next {
 			p.count = 0
 			//nodeTableFile.WriteString(fmt.Sprintf("%d %s", p.count, p.key))
+		}
+	}
+}
+
+/* 統計idf的分子，也就是每個詞被多少文見提及 */
+func idfNumerator(nodeTable []*node) {
+	for n := 0; n < len(nodeTable); n++ {
+		for p := nodeTable[n]; p != nil; p = p.next {
+			if p.count != 0 {
+				p.idf++
+			}
+		}
+	}
+}
+
+func computeIDF(nodeTable []*node) {
+	for n := 0; n < len(nodeTable); n++ {
+		for p := nodeTable[n]; p != nil; p = p.next {
+			p.idf = math.Log10(float64(docNumber) / p.idf)
 		}
 	}
 }
@@ -345,7 +367,7 @@ func outputNodeTable(nodeTable []*node) {
 	defer nodeTableFile.Close()
 	for n := 1; n < len(nodeTable); n++ {
 		for p := nodeTable[n]; p != nil; p = p.next {
-			nodeTableFile.WriteString(fmt.Sprintf("%d%s ", p.count, p.key))
+			nodeTableFile.WriteString(fmt.Sprintf("%d%s%f ", p.count, p.key, p.idf))
 		}
 	}
 	nodeTableFile.WriteString(fmt.Sprintf("\n"))
