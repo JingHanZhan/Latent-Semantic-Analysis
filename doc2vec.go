@@ -9,16 +9,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unsafe"
 )
 
 //HASHSIZE is hashtable size
 //const HASHSIZE = 100000
 
 var (
-	i         = 0
-	collision = 0
-	docNumber = 0
+	i             = 0
+	collision     = 0
+	docNumber     = 0
+	wordDimension = 0
 )
 
 func main() {
@@ -29,7 +29,7 @@ func main() {
 		nodeTable = make([]*node, *args.h) //[*args.m]*node
 		keyTable  []*key
 	)
-	fmt.Println("cap(nodeTable):", unsafe.Sizeof(node{"1", 1, 1, nil}))
+	//fmt.Println("cap(nodeTable):", unsafe.Sizeof(node{"1", 0, 0, 0, nil}))
 	creatBasicTable(nodeTable[:], keyTable)
 	fmt.Println("How many collision:", collision)
 	clearTableCount(nodeTable[:])
@@ -88,6 +88,7 @@ type node struct {
 	key   string
 	count int
 	idf   float64
+	tfidf float64
 	next  *node
 }
 
@@ -95,6 +96,7 @@ type key struct {
 	keypos *string
 	count  *int
 	idf    *float64
+	tfidf  *float64
 }
 
 func doc2vec(nodeTable []*node, keyTable []*key) {
@@ -124,6 +126,7 @@ func doc2vec(nodeTable []*node, keyTable []*key) {
 				hashNumber := hash(&stringBuf)
 				nodeTable[hashNumber], keyTable = addVecWord(nodeTable[hashNumber], stringBuf, keyTable)
 			}
+			computeTFIDF(nodeTable[:])
 			outputNodeTable(nodeTable[:])
 			outputVector(nodeTable[:])
 			clearTableCount(nodeTable[:])
@@ -190,7 +193,7 @@ func creatBasicTable(nodeTable []*node, keyTable []*key) {
 				nodeTable[hashNumber], keyTable = addWord(nodeTable[hashNumber], stringBuf, keyTable)
 			}
 			stringBuf = s[1]
-			idfNumerator(nodeTable[:])
+			idfDenominator(nodeTable[:])
 			clearTableCount(nodeTable[:])
 			docNumber++
 		} else {
@@ -215,8 +218,8 @@ func clearTableCount(nodeTable []*node) {
 	}
 }
 
-/* 統計idf的分子，也就是每個詞被多少文見提及 */
-func idfNumerator(nodeTable []*node) {
+/* 統計idf的分母，也就是每個詞被多少文見提及 */
+func idfDenominator(nodeTable []*node) {
 	for n := 0; n < len(nodeTable); n++ {
 		for p := nodeTable[n]; p != nil; p = p.next {
 			if p.count != 0 {
@@ -226,10 +229,21 @@ func idfNumerator(nodeTable []*node) {
 	}
 }
 
+/* 將docNumber 除以 idfDenominator 取 log，計算出idf數值*/
 func computeIDF(nodeTable []*node) {
-	for n := 0; n < len(nodeTable); n++ {
+	for n := 1; n < len(nodeTable); n++ {
 		for p := nodeTable[n]; p != nil; p = p.next {
 			p.idf = math.Log10(float64(docNumber) / p.idf)
+			wordDimension++
+		}
+	}
+}
+
+/* 計算TFIDF數值 */
+func computeTFIDF(nodeTable []*node) {
+	for n := 0; n < len(nodeTable); n++ {
+		for p := nodeTable[n]; p != nil; p = p.next {
+			p.tfidf = (float64(p.count) / float64(wordDimension)) * p.idf
 		}
 	}
 }
@@ -271,8 +285,8 @@ func addWord(newWord *node, stringBuf string, keyTable []*key) (*node, []*key) {
 	i++
 	fmt.Printf("Add word : %d\r", i)
 	if newWord == nil {
-		newWord = &node{stringBuf, 1, 0, nil}
-		keyTable = append(keyTable, &key{&newWord.key, &newWord.count, &newWord.idf})
+		newWord = &node{stringBuf, 1, 0, 0, nil}
+		keyTable = append(keyTable, &key{&newWord.key, &newWord.count, &newWord.idf, &newWord.tfidf})
 		return newWord, keyTable
 	}
 
@@ -283,8 +297,8 @@ func addWord(newWord *node, stringBuf string, keyTable []*key) (*node, []*key) {
 		}
 		if w.next == nil {
 			collision++
-			newNode := &node{stringBuf, 1, 0, nil}
-			keyTable = append(keyTable, &key{&newNode.key, &newNode.count, &newNode.idf})
+			newNode := &node{stringBuf, 1, 0, 0, nil}
+			keyTable = append(keyTable, &key{&newNode.key, &newNode.count, &newNode.idf, &newNode.tfidf})
 			w.next = newNode
 			return newWord, keyTable
 		}
@@ -365,9 +379,10 @@ func outputNodeTable(nodeTable []*node) {
 		fmt.Println("Open file fail !")
 	}
 	defer nodeTableFile.Close()
+	fmt.Println("dimension:", wordDimension)
 	for n := 1; n < len(nodeTable); n++ {
 		for p := nodeTable[n]; p != nil; p = p.next {
-			nodeTableFile.WriteString(fmt.Sprintf("%d%s%f ", p.count, p.key, p.idf))
+			nodeTableFile.WriteString(fmt.Sprintf("%d%s%f ", p.count, p.key, p.tfidf))
 		}
 	}
 	nodeTableFile.WriteString(fmt.Sprintf("\n"))
