@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"gonum.org/v1/gonum/mat"
 )
 
 //HASHSIZE is hashtable size
@@ -20,6 +22,8 @@ var (
 	docNumber     = 0
 	wordDimension = 0
 )
+
+const rank = 4
 
 func main() {
 	checkParameter()
@@ -42,6 +46,81 @@ func main() {
 	//fmt.Println("test nodetable:", nodeTable[0].count)
 	fmt.Println("time:", time.Now().Sub(start).Seconds())
 	//test()
+	fmt.Println("wordDimension:", wordDimension)
+	fmt.Println("docNumber:", docNumber)
+
+	/* compute svd  */
+	docvec := loadMatrixData()
+	A := mat.NewDense(20, 95, docvec)
+	docSVDMatrix(A, rank)
+
+}
+
+/* load matrix from file like txt */
+func loadMatrixData() []float64 {
+	var docvec []float64
+	fmt.Println("load matrix data ...")
+	vecFile, err := os.Open("doc2vec.txt")
+	if err != nil {
+		fmt.Println("Open file fail !")
+	}
+	defer vecFile.Close()
+	scanner := bufio.NewReader(vecFile)
+	stringBuf, readStringErr := scanOneWord(scanner)
+	for readStringErr == nil {
+		if strings.Contains(stringBuf, "\n") {
+			s := strings.Split(stringBuf, "\n")
+			stringBuf = s[0]
+
+			// 去除空格
+			stringBuf = strings.Replace(stringBuf, " ", "", -1)
+			// 去除换行符
+			stringBuf = strings.Replace(stringBuf, "\n", "", -1)
+			if string2float, err := strconv.ParseFloat(stringBuf, 32); err == nil {
+				docvec = append(docvec, string2float)
+			}
+			stringBuf = s[1]
+		} else {
+			// 去除空格
+			stringBuf = strings.Replace(stringBuf, " ", "", -1)
+			if string2float, err := strconv.ParseFloat(stringBuf, 32); err == nil {
+				docvec = append(docvec, string2float)
+			}
+			stringBuf, readStringErr = scanOneWord(scanner)
+		}
+	}
+	// fmt.Println(docvec)
+	return docvec
+}
+
+func docSVDMatrix(A *mat.Dense, rank int) {
+	var (
+		svd mat.SVD
+		um  mat.Dense
+	)
+
+	svd.Factorize(A, mat.SVDThin)
+	svd.UTo(&um)
+	s := svd.Values(nil)
+	dim1, _ := um.Dims()
+
+	if rank > len(s) {
+		fmt.Println("SVD rand set error")
+		return
+	}
+
+	result := make([]float64, dim1*rank)
+	//fmt.Println(dim1, dim2)
+	for i := 0; i < dim1*rank; i++ {
+		result[i] = s[i%rank] * um.At(i/rank, i%rank)
+	}
+	B := mat.NewDense(dim1, rank, result)
+	matPrint(B)
+}
+
+func matPrint(X mat.Matrix) {
+	fa := mat.Formatted(X, mat.Prefix(""), mat.Squeeze())
+	fmt.Printf("%v \n", fa)
 }
 
 func test() {
@@ -342,7 +421,7 @@ func printNodeTable(nodeTable []*node) {
 }
 
 func outputVector(nodeTable []*node) {
-	fmt.Println("Output vector...")
+	fmt.Print("Output vector...\r")
 	vecFile, err := os.OpenFile("doc2vec.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Println("Open file fail !")
@@ -350,7 +429,7 @@ func outputVector(nodeTable []*node) {
 	defer vecFile.Close()
 	for n := 1; n < len(nodeTable); n++ {
 		for p := nodeTable[n]; p != nil; p = p.next {
-			vecFile.WriteString(fmt.Sprintf("%d ", p.count))
+			vecFile.WriteString(fmt.Sprintf("%f ", p.tfidf))
 		}
 	}
 	vecFile.WriteString(fmt.Sprintf("\n"))
@@ -372,14 +451,14 @@ func outputVector(nodeTable []*node) {
 
 /* 改版outputTable，若檔案不存在則建立，檔案已存在則續寫，不會覆蓋原本內容*/
 func outputNodeTable(nodeTable []*node) {
-	fmt.Println("Output node table...")
+	fmt.Print("Output node table...\r")
 	//nodeTableFile, err := os.Create("NodeTable.txt")
 	nodeTableFile, err := os.OpenFile("NodeTable.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		fmt.Println("Open file fail !")
 	}
 	defer nodeTableFile.Close()
-	fmt.Println("dimension:", wordDimension)
+	//fmt.Println("dimension:", wordDimension)
 	for n := 1; n < len(nodeTable); n++ {
 		for p := nodeTable[n]; p != nil; p = p.next {
 			nodeTableFile.WriteString(fmt.Sprintf("%d%s%f ", p.count, p.key, p.tfidf))
